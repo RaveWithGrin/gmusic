@@ -4,10 +4,9 @@ import bs4
 from bs4 import BeautifulSoup
 from gmusicapi import Mobileclient
 from pprint import pprint
-from getpass import getpass
 
 
-def clear_playlist(playlist):
+def clear_playlist(api, playlist):
     track_ids = []
     for track in playlist['tracks']:
         track_ids.append(track['id'])
@@ -15,19 +14,19 @@ def clear_playlist(playlist):
         api.remove_entries_from_playlist(track_ids)
 
 
-def get_playlist(playlist_name):
+def get_playlist(api, playlist_name):
     playlists = api.get_all_user_playlist_contents()
     for playlist in playlists:
         if (playlist['name'] == playlist_name):
             return playlist
 
 
-def search_song(query):
+def search_song(api, query):
     results = api.search(query)
     return results['song_hits']
 
 
-def add_to_playlist(playlistId, songs):
+def add_to_playlist(api, playlistId, songs):
     api.add_songs_to_playlist(playlistId, songs)
 
 
@@ -43,20 +42,26 @@ def get_edge_playlist():
     return songs
 
 
-creds = {}
-creds['email'] = raw_input('Email: ')
-creds['password'] = getpass()
-api = Mobileclient()
-logged_in = api.login(creds['email'], creds['password'],
-                      Mobileclient.FROM_MAC_ADDRESS)
+def print_playlist(playlist):
+    for track in playlist['tracks']:
+        title = re.sub(u'\u201d', '"', re.sub(
+            u'\u201c', '"', track['track']['title']))
+        artist = re.sub(u'\u201d', '"', re.sub(
+            u'\u201c', '"', track['track']['artist']))
+        album = re.sub(u'\u201d', '"', re.sub(
+            u'\u201c', '"', track['track']['album']))
+        print('{} - {} ({})'.format(title, artist, album))
 
-if logged_in:
+
+def update_edge_playlist(api):
     edge_playlist = get_edge_playlist()
+    print('Edge playlist:')
+    pprint(edge_playlist)
     song_ids = []
     for song in edge_playlist:
         artist = song[:song.index(' - ')]
         title = song[song.index(' - ') + 3:]
-        results = search_song(song)
+        results = search_song(api, song)
         if len(results) > 0:
             match = 0
             for index, result in enumerate(results):
@@ -64,8 +69,29 @@ if logged_in:
                     match = index
                     break
             song_ids.append(results[match]['track']['storeId'])
-    my_playlist = get_playlist('Edge Top 30')
-    clear_playlist(my_playlist)
-    add_to_playlist(my_playlist['id'], song_ids)
-    my_playlist = get_playlist('Edge Top 30')
-    pprint(my_playlist)
+    my_playlist = get_playlist(api, 'Edge Top 30')
+    clear_playlist(api, my_playlist)
+    add_to_playlist(api, my_playlist['id'], song_ids)
+    new_playlist = get_playlist(api, 'Edge Top 30')
+    print('New gmusic playlist:')
+    print_playlist(new_playlist)
+
+
+def login():
+    api = Mobileclient()
+    logged_in = api.oauth_login(Mobileclient.FROM_MAC_ADDRESS)
+
+    if not logged_in:
+        print('Unable to login, attemping oauth')
+        api.perform_oauth()
+        logged_in = api.oauth_login(Mobileclient.FROM_MAC_ADDRESS)
+
+    if not logged_in:
+        print('Unable to auth')
+    else:
+        print('Logged in')
+        update_edge_playlist(api)
+
+
+if __name__ == '__main__':
+    login()
