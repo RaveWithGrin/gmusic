@@ -1,9 +1,11 @@
 import re
 import requests
 import bs4
+from fuzzywuzzy import fuzz, process
 from bs4 import BeautifulSoup
 from gmusicapi import Mobileclient
 from pprint import pprint
+from unidecode import unidecode
 
 
 def clear_playlist(api, playlist):
@@ -38,18 +40,15 @@ def get_edge_playlist():
     songs = []
     for child in children:
         if (type(child) is not bs4.element.NavigableString):
-            songs.append(re.sub(u'\u2013', '-', child.get_text()))
+            songs.append(unidecode(child.get_text()))
     return songs
 
 
 def print_playlist(playlist):
     for track in playlist['tracks']:
-        title = re.sub(u'\u201d', '"', re.sub(
-            u'\u201c', '"', track['track']['title']))
-        artist = re.sub(u'\u201d', '"', re.sub(
-            u'\u201c', '"', track['track']['artist']))
-        album = re.sub(u'\u201d', '"', re.sub(
-            u'\u201c', '"', track['track']['album']))
+        title = unidecode(track['track']['title'])
+        artist = unidecode(track['track']['artist'])
+        album = unidecode(track['track']['album'])
         print('{} - {} ({})'.format(title, artist, album))
 
 
@@ -59,16 +58,17 @@ def update_edge_playlist(api):
     pprint(edge_playlist)
     song_ids = []
     for song in edge_playlist:
-        artist = song[:song.index(' - ')]
-        title = song[song.index(' - ') + 3:]
         results = search_song(api, song)
         if len(results) > 0:
-            match = 0
+            best_ratio = 0
+            match_index = 0
             for index, result in enumerate(results):
-                if result['track']['artist'] == artist and result['track']['title'] == title:
-                    match = index
-                    break
-            song_ids.append(results[match]['track']['storeId'])
+                result_song = '{} - {}'.format(unidecode(result['track']['artist']), unidecode(result['track']['title']))
+                match_ratio = fuzz.ratio(song.lower(), result_song.lower())
+                if match_ratio > best_ratio:
+                    best_ratio = match_ratio
+                    match_index = index
+            song_ids.append(results[match_index]['track']['storeId'])
     my_playlist = get_playlist(api, 'Edge Top 30')
     clear_playlist(api, my_playlist)
     add_to_playlist(api, my_playlist['id'], song_ids)
